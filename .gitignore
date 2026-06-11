@@ -1,0 +1,47 @@
+# ==============================================================================
+# AHCPCPEMU Master Git Ignore Specification
+# ==============================================================================
+
+# 1. Compilation & Multi-Platform Build Artifacts
+# ------------------------------------------------------------------------------
+Build/
+build/
+bin/
+obj/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.app/
+
+# 2. Operating System Spurious Meta-Data (macOS & Windows)
+# ------------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon\r
+._*
+Thumbs.db
+ehthumbs.db
+
+# 3. Interactive Development Environments & Toolchain Caches
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+.vs/
+*.suo
+*.user
+*.xcworkspace/
+*.xcodeproj/
+CMakeSettings.json
+
+# 4. Large External Software Media (Keep your repo lightweight)
+# ------------------------------------------------------------------------------
+*.dsk
+*.DSK
+*.ipf
+*.zip
+*.tar.gz
