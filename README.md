@@ -6,25 +6,59 @@ This repository features a decoupled architecture split into a shared core syste
 
 ---
 
+       ┌────────────────────────────────────────────────────────┐
+       │                 CPC_APP (SDL3 Host Layer)              │
+       └───────────────────────────┬────────────────────────────┘
+                                   │ Owns / Drives
+                                   ▼
+       ┌────────────────────────────────────────────────────────┐
+       │             CPC_EMU (Master Core Container)            │
+       └─────┬──────────────┬──────────────┬──────────────┬─────┘
+             │              │              │              │
+             ▼              ▼              ▼              ▼
+       ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐
+       │  CPC_CPU  │  │ CPC_VDP   │  │  CPC_DSK  │  │  CPC_MMI  │
+       └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘
+             │              │              │              │
+             └──────────────┴──────┬───────┴──────────────┘
+                                   │ All Communicate Via
+                                   ▼
+       ┌────────────────────────────────────────────────────────┐
+       │                        CPC_BUS                         │
+       └────────────────────────────────────────────────────────┘
+
+| Subsystem Tag | Domain Name | Core Engineering Responsibility |
+| :--- | :--- | :--- |
+| **`CPC_APP`** | Graphical Host Wrapper | The SDL3 host app framework (`AHCPCPEMUAPP`) handling your physical window, audio backends, and render targets. |
+| **`CPC_EMU`** | Master Core Orchestrator | The container component inside `CPCEMUCORE`. Ticks the clock cycles and syncs the CPU, CRTC, and BUS together. |
+| **`CPC_BUS`** | System Interconnect Bus | The master communication backbone. Routes memory reads/writes, I/O mapping, and coordinates components. |
+| **`CPC_CPU`** | Central Processing Unit | Emulates Z80 instruction cycle fetching, execution, registers, and timing hooks. |
+| **`CPC_VDP`** | Video Display Processor | Handles display timing, sync signals, and video RAM address generation (Motorola 6845). |
+| **`CPC_DSK`** | Disk Controller & Storage | Parses sector geometries of `.DSK` raw images, emulating the NEC uPD765 Floppy Disk Controller. |
+| **`CPC_MMI`** | Man-Machine Interface | Handles translation of physical host keyboard/joystick events down into virtual peripheral matrix lines. |
+---
+
 ## 📦 Directory Structure
 
 ```text
 AHCPCPEMU/
 ├── CMakeLists.txt        # Master multi-platform build specification script
-├── README.md             # This document
+├── Makefile              # Quality-of-life automation shortcuts for terminal
+├── README.md             # Project roadmap and framework guidelines
 ├── .gitignore            # Version control tracking constraints
 ├── Resources/            # Embedded hardware system binaries
 │   ├── OS_6128.ROM
 │   └── BASIC_6128.ROM
 ├── Include/              # Object interface definition headers (.h)
 │   ├── cpcapp.h          # Host OS graphical layer coordinator
-│   └── cpcemu.h          # Virtual motherboard/bus hardware core
+│   ├── cpccommon.h       # Shared subcategories, macros, and logging utilities
+│   └── cpcemu.h          # Virtual motherboard/bus hardware core orchestrator
 └── Source/               # Implementation files (.cpp)
     ├── main.cpp          # Headless diagnostic app entry point
     ├── main_app.cpp      # Graphical windowed app entry point
     ├── cpcapp.cpp        # Window/Event lifecycle routines
+    ├── cpccommon.cpp     # SDL-compliant zero-allocation logging callback
     └── cpcemu.cpp        # Hardware cycle execution matrix
-
 ```
 
 ---
@@ -44,89 +78,63 @@ brew install sdl3
 
 ---
 
-## 🚀 Building & Running the System
+## 🛠️ Build Automation & Execution Guide
 
-Every compilation sequence should be executed safely from the **project root folder** using CMake's modern out-of-source parameters (`-B Build`). This completely isolates your runtime code and prevents clutter from spilling into your source environment.
+This repository utilizes a dual-tier build system: **CMake** serves as the cross-platform meta-generator, while a root-level **Makefile** acts as a convenience shortcut layer to automate compiling, cleaning, and execution right from your terminal window.
 
-### 1. Developer Console Mode (Standard Workstation Flow)
-
-By default, the development configuration (`-DAHC_DEV_MODE=ON`) maps your interactive app to a standard console-attached layout so that `SDL_Log` outputs stream cleanly to your physical terminal window in real-time.
-
-```bash
-# A. Configure the workspace layout with Dev Console parameters active
-cmake -S . -B Build -DAHC_DEV_MODE=ON
-
-# B. Compile all core library layers and executable binaries
-cmake --build Build
+```text
+ Terminal Command ──► Makefile Shortcut ──► CMake Configuration ──► Compiler Target Output
 
 ```
 
-#### Executing Your Targets:
+### 📋 Command Reference Matrix
 
-Once compiled, you can run either target straight through your shell terminal session:
-
-* **To execute the Primary Emulator App (Amstrad-Blue Window):**
-```bash
-./Build/AHCPCPEMUAPP
-
-```
-
-
-* **To execute the Text-Only Diagnostic Engine (Continuous Integration Suite):**
-```bash
-./Build/AHCPCPEMU
-
-```
-
-
+| Command | Action Type | Primary Responsibility |
+| --- | --- | --- |
+| **`make`** or **`make dev`** | **Build** | Generates build recipes and compiles both app targets with the development console enabled (`AHC_DEV_MODE=ON`). |
+| **`make retail`** | **Build** | Generates build recipes and compiles a production-ready, standalone macOS App bundle without terminal attachment (`AHC_DEV_MODE=OFF`). |
+| **`make run`** | **Execute** | Automatically updates modified code targets, then runs the graphical interactive emulator wrapper (**`AHCPCPEMUAPP`**). |
+| **`make run-headless`** | **Execute** | Automatically updates modified code targets, then runs the headless automated test suite (**`AHCPCPEMU`**). |
+| **`make clean`** | **Maintenance** | Removes compiled object (`.o`) files and binaries, leaving the primary CMake system generation configuration cache intact. |
+| **`make superclean`** | **Maintenance** | **"Nuclear option."** Completely purges the entire `Build/` directory cache, resetting your compilation environment to zero. |
 
 ---
 
-### 2. Retail App Bundle Deployment Mode
+### ⚡ Detailed Workflow Implementations
 
-When you want to bundle your emulator into a standalone, native macOS **`.app` bundle package** (which isolates files, sets custom app identifiers like `com.akashatek.ahcepcpemu`, and encapsulates asset tracking pathways), switch development mode off:
+#### 1. Incremental Compilation (`make`)
 
-```bash
-# A. Re-configure the build matrix to construct an Apple App Bundle
-cmake -S . -B Build -DAHC_DEV_MODE=OFF
-
-# B. Run the unified target recompilation sequence
-cmake --build Build
-
-# C. Launch your compiled standalone deployment layer natively
-open Build/AHCPCPEMUAPP.app
-
-```
-
----
-
-## 🧹 Housekeeping & Project Cleanup
-
-If you want to flush away your intermediate compiler files, object arrays, or target execution builds without wiping out your structural cache configurations, call the native CMake cleaning wrapper:
+Compiles the structural static core library `CPCEMUCORE` along with your active executable applications. Subsequent calls only rebuild files you have altered, speeding up execution.
 
 ```bash
-# Resets compiled binaries while leaving generation infrastructure completely intact
-cmake --build Build --target clean
+make
 
 ```
 
-If you want to perform a completely pristine "nuclear" reset of your generation workspace to troubleshoot changes made to `CMakeLists.txt`, safely flush out the `Build/` directory parameters like this:
+#### 2. Running the Interactive Graphical App (`make run`)
+
+Invokes a dependency check to ensure your local source changes are compiled, then starts the SDL3 hardware-accelerated viewport display. All engine output layers route cleanly to your terminal.
 
 ```bash
-# Deletes temporary local build configurations without losing the directory
-rm -rf Build/*
+make run
 
 ```
 
----
+#### 3. Running Headless Diagnostic Suites (`make run-headless`)
 
-## 📝 Hardware Architecture Notes
+Launches the engine runner bypassing window allocation completely. This is perfect for verifying CPU instruction cycles, BUS layouts, or parsing `.DSK` track sectors directly in pure terminal conditions.
 
-* **CPU Timing Matrix:** The system framework targets a simulated `4.0 MHz` instruction step block configuration.
-* **Graphical Canvas Engine:** Interactive viewports run at native hardware refresh rates mapped over modern GPU backend structures bound to an unextended C++20 design configuration.
+```bash
+make run-headless
 
 ```
 
-This updates your documentation completely and ensures anyone pulling your repository knows exactly how to step between the **Headless Runner** (`AHCPCPEMU`) and the **Graphical Application** (`AHCPCPEMUAPP`)!
+#### 4. Clearing Environment Faults (`make superclean`)
+
+If you modify target rules inside `CMakeLists.txt`, change structural system variables, or run into compiler sync glitches on macOS, completely flush your environment before building fresh:
+
+```bash
+make superclean
+make run
 
 ```

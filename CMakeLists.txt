@@ -14,9 +14,11 @@ option(AHC_DEV_MODE "Enable development console mode on macOS" ON)
 # ------------------------------------------------------------------------------
 set(CORE_SOURCES
     Source/cpcemu.cpp
+    Source/cpclog.cpp   # Lowercase
 )
 set(CORE_HEADERS
     Include/cpcemu.h
+    Include/cpclog.h    # Lowercase
 )
 
 add_library(CPCEMUCORE STATIC ${CORE_SOURCES} ${CORE_HEADERS})
