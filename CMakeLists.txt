@@ -7,48 +7,73 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(SDL3 REQUIRED)
 
-# ------------------------------------------------------------------------------
-# Development Switch: Set to ON to force console logging on macOS
-# ------------------------------------------------------------------------------
 option(AHC_DEV_MODE "Enable development console mode on macOS" ON)
 
-set(SOURCE_FILES
-    Source/main.cpp
-    Source/cpcapp.cpp
+# ------------------------------------------------------------------------------
+# 1. SHARED CORE ENGINE MODULE (Renamed to CPCEMUCORE)
+# ------------------------------------------------------------------------------
+set(CORE_SOURCES
+    Source/cpcemu.cpp
+)
+set(CORE_HEADERS
+    Include/cpcemu.h
 )
 
-set(HEADER_FILES
+add_library(CPCEMUCORE STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+target_include_directories(CPCEMUCORE PUBLIC Include)
+target_link_libraries(CPCEMUCORE PUBLIC SDL3::SDL3)
+
+# ------------------------------------------------------------------------------
+# 2. TARGET A: GRAPHICAL APPLICATION (main_app.cpp)
+# ------------------------------------------------------------------------------
+set(GUI_SOURCES
+    Source/main_app.cpp
+    Source/cpcapp.cpp
+)
+set(GUI_HEADERS
     Include/cpcapp.h
 )
 
+set(GUI_TARGET_NAME "AHCPCPEMUAPP")
+
 if(APPLE AND NOT AHC_DEV_MODE)
-    # RETAIL MODE: Compiles a clean, standalone .app bundle package for users
-    add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES} ${HEADER_FILES})
+    add_executable(${GUI_TARGET_NAME} MACOSX_BUNDLE ${GUI_SOURCES} ${GUI_HEADERS})
     
-    set_target_properties(${PROJECT_NAME} PROPERTIES
-        MACOSX_BUNDLE_BUNDLE_NAME "AHCPCPEMU"
+    set_target_properties(${GUI_TARGET_NAME} PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "AHCPCPEMUAPP"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.akashatek.ahcepcpemu"
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     )
 
     file(GLOB ROM_RESOURCES "Resources/*")
-    target_sources(${PROJECT_NAME} PRIVATE ${ROM_RESOURCES})
-    set_source_files_properties(${ROM_RESOURCES} PROPERTIES
-        MACOSX_BUNDLE_RESOURCE TRUE
-    )
+    target_sources(${GUI_TARGET_NAME} PRIVATE ${ROM_RESOURCES})
+    set_source_files_properties(${ROM_RESOURCES} PROPERTIES MACOSX_BUNDLE_RESOURCE TRUE)
 else()
-    # DEV MODE (macOS Console) or Standard Linux/Windows target compilation
-    add_executable(${PROJECT_NAME} ${SOURCE_FILES} ${HEADER_FILES})
+    add_executable(${GUI_TARGET_NAME} ${GUI_SOURCES} ${GUI_HEADERS})
     
-    # Ensure assets are copied directly next to the loose command line binary
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    add_custom_command(TARGET ${GUI_TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/Resources"
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/Resources"
-        COMMENT "Syncing emulator system ROM resource files to execution folder..."
+        "$<TARGET_FILE_DIR:${GUI_TARGET_NAME}>/Resources"
     )
 endif()
 
-target_include_directories(${PROJECT_NAME} PRIVATE Include)
-target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3)
+target_include_directories(${GUI_TARGET_NAME} PRIVATE Include)
+target_link_libraries(${GUI_TARGET_NAME} PRIVATE CPCEMUCORE)
+
+# ------------------------------------------------------------------------------
+# 3. TARGET B: HEADLESS AUTOMATED TERMINAL RUNNER (main.cpp)
+# ------------------------------------------------------------------------------
+set(HEADLESS_TARGET_NAME "AHCPCPEMU")
+
+add_executable(${HEADLESS_TARGET_NAME} Source/main.cpp)
+target_include_directories(${HEADLESS_TARGET_NAME} PRIVATE Include)
+target_link_libraries(${HEADLESS_TARGET_NAME} PRIVATE CPCEMUCORE)
+
+# Sync assets next to the headless target binary
+add_custom_command(TARGET ${HEADLESS_TARGET_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_CURRENT_SOURCE_DIR}/Resources"
+    "$<TARGET_FILE_DIR:${HEADLESS_TARGET_NAME}>/Resources"
+)
