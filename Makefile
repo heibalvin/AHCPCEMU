@@ -1,34 +1,26 @@
 # ==============================================================================
-# AHCPCPEMU Automation Wrapper Shortcuts
+# AHCPCPEMU UNIFIED AUTOMATION SHORTCUTS
 # ==============================================================================
 
-.PHONY: all dev retail clean superclean run run-headless
+.PHONY: all build clean run run-headless
 
-# Default target: builds everything in development mode
-all: dev
+# Default action is to compile the single master binary
+all: build
 
-# Configure and build with development console enabled
-dev:
-	cmake -S . -B Build -DAHC_DEV_MODE=ON
+build:
+	cmake -S . -B Build
 	cmake --build Build
 
-# Configure and build as a pure macOS standalone application bundle
-retail:
-	cmake -S . -B Build -DAHC_DEV_MODE=OFF
-	cmake --build Build
-
-# Run the graphical app (Attached to the terminal so you can see your custom logs)
-run: dev
-	./Build/AHCPCPEMUAPP
-
-# Run the headless diagnostic suite
-run-headless: dev
-	./Build/AHCPCPEMU
-
-# Standard object/binary clean (Leaves CMake cache intact)
+# Safe cleanup: Clears out binaries, objects, and configurations 
+# while explicitly leaving the Build directory standing empty.
 clean:
-	cmake --build Build --target clean
+	rm -rf Build/*
+	@echo "Build artifacts purged. Storage directory structure preserved."
 
-# "Nuclear" clean: Completely purges the Build folder cache
-superclean:
-	rm -rf Build/* Build/.cmake
+# Launches the interactive GUI Window mode
+run: build
+	./Build/CPCEMU
+
+# Launches the pure console headless mode (No window)
+run-headless: build
+	./Build/CPCEMU --headless

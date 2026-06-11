@@ -1,14 +1,33 @@
 #include "cpclog.h"
-#include "cpcemu.h"
+#include "cpcapp.h"
 
 int main(int argc, char* argv[]) {
-    (void)argc; (void)argv;
-
-    // Initialize the Static Logging Engine Class
     CPCLOG::initialize();
+    LOG_EMU(SDL_LOG_PRIORITY_INFO, "=== AHCPCPEMU Framework Main Engine Entry ===");
 
-    LOG_EMU(SDL_LOG_PRIORITY_INFO, "=== AHCPCPEMU OBJECT REFACTOR BOOT ===");
-    LOG_VDP(SDL_LOG_PRIORITY_DEBUG, "VDP register 0x01 initialized to 50Hz mode refresh parameters.");
+    bool launchHeadless = false;
+    for (int i = 1; i < argc; ++i) {
+        if (SDL_strcmp(argv[i], "--headless") == 0) {
+            launchHeadless = true;
+        }
+    }
 
+    // CPCAPP is always the entry point, configuring its internal dependencies contextually
+    CPCAPP app(launchHeadless);
+
+    if (!app.powerOn()) {
+        LOG_EMU(SDL_LOG_PRIORITY_CRITICAL, "Application environment aborted execution.");
+        return -1;
+    }
+
+    if (launchHeadless) {
+        const Uint8 mockDiagnosticPayload[] = { 0xAA, 0xBB, 0xCC, 0xDD };
+        app.loadRom(mockDiagnosticPayload, sizeof(mockDiagnosticPayload));
+    } else {
+        app.loadRom("Resources/OS_6128.ROM");
+    }
+
+    app.run();
+    app.powerOff();
     return 0;
 }

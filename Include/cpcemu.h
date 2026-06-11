@@ -2,23 +2,25 @@
 #define CPCEMU_H
 
 #include <SDL3/SDL.h>
+#include "cpcdsk.h"
 
 class CPCEMU {
+private:
+    Uint64 totalSystemCycles;
+
 public:
+    CPCDSK dsk;
+
     CPCEMU();
     ~CPCEMU();
 
-    // Power operations inside the virtual hardware boundaries
-    void systemReset();
-    
-    // Step the emulator forward by a precise amount of real-world time
-    void update(double deltaTime);
+    bool powerOn();
+    void powerOff();
+    void reset();
+    void step(double deltaTime);
 
-    // Read-only state accessors for structural debugging
-    Uint64 getExecutedCycles() const { return totalSystemCycles; }
-
-private:
-    Uint64 totalSystemCycles;
+    // Standardized asset injection signature
+    bool loadRom(const Uint8* data, size_t size);
 };
 
 #endif // CPCEMU_H

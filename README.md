@@ -27,6 +27,12 @@ This repository features a decoupled architecture split into a shared core syste
        │                        CPC_BUS                         │
        └────────────────────────────────────────────────────────┘
 
+### Subsystem Architecture Responsibilities
+
+* **Host Application Layer (`CPCAPP`)**: Acts as the hardware box. It manages physical resources (OS window bindings, native file I/O loading, delta timing slicing) and encapsulates the virtual motherboard context.
+* **Emulation Core Bus (`CPCEMU`)**: Acts as the physical circuit motherboard traces. It intercepts operations delivered by the Application wrapper and propagates clock tick vectors smoothly down to attached component devices.
+* **Hardware Component Domain (`CPCCOM` / `CPCDSK`)**: Mimics discrete physical silicon chips. Every hardware peripheral accepts a reference link back to the parent motherboard and conforms strictly to the unified `powerOn`, `powerOff`, and `reset` lifecycle paradigm.
+
 | Subsystem Tag | Domain Name | Core Engineering Responsibility |
 | :--- | :--- | :--- |
 | **`CPC_APP`** | Graphical Host Wrapper | The SDL3 host app framework (`AHCPCPEMUAPP`) handling your physical window, audio backends, and render targets. |
@@ -41,24 +47,21 @@ This repository features a decoupled architecture split into a shared core syste
 ## 📦 Directory Structure
 
 ```text
-AHCPCPEMU/
-├── CMakeLists.txt        # Master multi-platform build specification script
-├── Makefile              # Quality-of-life automation shortcuts for terminal
-├── README.md             # Project roadmap and framework guidelines
-├── .gitignore            # Version control tracking constraints
-├── Resources/            # Embedded hardware system binaries
-│   ├── OS_6128.ROM
-│   └── BASIC_6128.ROM
-├── Include/              # Object interface definition headers (.h)
-│   ├── cpcapp.h          # Host OS graphical layer coordinator
-│   ├── cpccommon.h       # Shared subcategories, macros, and logging utilities
-│   └── cpcemu.h          # Virtual motherboard/bus hardware core orchestrator
-└── Source/               # Implementation files (.cpp)
-    ├── main.cpp          # Headless diagnostic app entry point
-    ├── main_app.cpp      # Graphical windowed app entry point
-    ├── cpcapp.cpp        # Window/Event lifecycle routines
-    ├── cpccommon.cpp     # SDL-compliant zero-allocation logging callback
-    └── cpcemu.cpp        # Hardware cycle execution matrix
+AHCPCEMU/
+├── CMakeLists.txt        # Master build orchestration configurations
+├── Makefile              # Automation wrapper blueprints (make run, make run-headless)
+├── Include/              # Unified Object Interface Headers
+│   ├── cpcapp.h          # Host OS Desktop Wrapper Shell Interface (SDL3 context)
+│   ├── cpccom.h          # Pure Abstract Hardware Component Interface Blueprint
+│   ├── cpcdsk.h          # Floppy Disk Controller / Asset Memory Component
+│   ├── cpcemu.h          # Virtual Motherboard Core System Interconnect Bus
+│   └── cpclog.h          # Global Synchronized Framework Logger Layer
+└── Source/               # System Implementation Units
+    ├── cpcapp.cpp        # OS window management, timing loops, and file operations
+    ├── cpcdsk.cpp        # FDC hardware matrix lifecycle and ROM binary injection
+    ├── cpcemu.cpp        # Motherboard subsystem distribution and step cycle routing
+    ├── cpclog.cpp        # Unified stable SDL3 log terminal stream translation
+    └── main.cpp          # Universal runtime execution entry router point
 ```
 
 ---
@@ -92,7 +95,6 @@ This repository utilizes a dual-tier build system: **CMake** serves as the cross
 | Command | Action Type | Primary Responsibility |
 | --- | --- | --- |
 | **`make`** or **`make dev`** | **Build** | Generates build recipes and compiles both app targets with the development console enabled (`AHC_DEV_MODE=ON`). |
-| **`make retail`** | **Build** | Generates build recipes and compiles a production-ready, standalone macOS App bundle without terminal attachment (`AHC_DEV_MODE=OFF`). |
 | **`make run`** | **Execute** | Automatically updates modified code targets, then runs the graphical interactive emulator wrapper (**`AHCPCPEMUAPP`**). |
 | **`make run-headless`** | **Execute** | Automatically updates modified code targets, then runs the headless automated test suite (**`AHCPCPEMU`**). |
 | **`make clean`** | **Maintenance** | Removes compiled object (`.o`) files and binaries, leaving the primary CMake system generation configuration cache intact. |
