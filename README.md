@@ -15,39 +15,41 @@ brew install sdl3
 brew install git
 ```
 
-Build
+Build & Run Debug Version
 ```
 # Clone the code repo
 git clone https://github.com/heibalvin/AHCPCEMU.git
-
-# 1. Create a clean Build target folder and step into it
 cd AHCPCEMU
 
-# 2. Run the CMake generation pass
-# This locates SDL3 via Homebrew automatically and sets up macOS bundle architectures
-cmake .
+# 1. Regenerate your build files with Dev Mode active
+cmake -S . -B Build -DAHC_DEV_MODE=ON
 
-# 3. Compile the code into the final executable package
-cmake --build .
+# 2. Compile the binary target
+cmake --build Build
+
+# 3. Launch the binary directly through the shell (DO NOT use 'open')
+./Build/AHCPCPEMU
 ```
 
-Run
+Build & Run MacOS app Version
 ```
-open AHCPCPEMU.app
+# 1. Force CMake to switch to full Apple App Bundle packaging rules
+cmake -S . -B Build -DAHC_DEV_MODE=OFF
+
+# 2. Recompile
+cmake --build Build
+
+# 3. Launch your clean package
+open Build/AHCPCPEMU.app
 ```
 
 Clean the build folder
 ```
 cmake --build Build --target clean
+or
+rm -rf Build/* 
 ```
 
-# Create the Resources directory if it doesn't exist
-mkdir -p Resources
-
-# Create empty placeholder files so the bundle step doesn't fail
-touch Resources/OS_6128.ROM
-touch Resources/BASIC_6128.ROM
-```
 
 ## Projet Structure
 
