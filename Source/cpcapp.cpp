@@ -9,18 +9,14 @@ CPCAPP::~CPCAPP() {
 }
 
 bool CPCAPP::powerOn() {
-    if (isHeadless) {
-        LOG_APP(SDL_LOG_PRIORITY_INFO, "Powering up CPCAPP in Headless Mode (VIDEO & INPUT disabled).");
-        
+    if (isHeadless) {        
         // Initialize SDL with NO subsystems. 
         // This gives us File I/O and Core Utilities without spinning up window managers.
         if (!SDL_Init(0)) {
             LOG_APP(SDL_LOG_PRIORITY_CRITICAL, "SDL Baseline Headless Init Failure: %s", SDL_GetError());
             return false;
         }
-    } else {
-        LOG_APP(SDL_LOG_PRIORITY_INFO, "Powering up CPCAPP in Interactive Mode (VIDEO, INPUT & FILE enabled).");
-        
+    } else {        
         // Full initialization for interactive GUI mode
         if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
             LOG_APP(SDL_LOG_PRIORITY_CRITICAL, "SDL Graphical Init Failure: %s", SDL_GetError());
@@ -45,7 +41,6 @@ bool CPCAPP::powerOn() {
 
 void CPCAPP::powerOff() {
     if (!isRunning) return;
-    LOG_APP(SDL_LOG_PRIORITY_INFO, "De-allocating application framework contexts.");
     isRunning = false;
     
     emu.powerOff();
@@ -56,11 +51,9 @@ void CPCAPP::powerOff() {
     }
     
     SDL_Quit(); // Safely closes down whichever initialization matrix was spun up
-    LOG_APP(SDL_LOG_PRIORITY_INFO, "Application core shut down cleanly.");
 }
 
 void CPCAPP::reset() {
-    LOG_APP(SDL_LOG_PRIORITY_INFO, "Global Hard Reset requested across all systems.");
     emu.reset();
 }
 
@@ -97,7 +90,6 @@ void CPCAPP::run() {
     while (isRunning) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
-                LOG_MMI(SDL_LOG_PRIORITY_INFO, "Quit command intercept triggered.");
                 isRunning = false;
             }
         }
@@ -112,7 +104,6 @@ void CPCAPP::run() {
 
 bool CPCAPP::loadRom(const char* filepath) {
     if (!filepath) return false;
-    LOG_APP(SDL_LOG_PRIORITY_INFO, "File IO request incoming: Parsing binary target '%s'", filepath);
 
     // This native SDL function works perfectly under SDL_Init(0)!
     size_t fileSize = 0;
@@ -128,6 +119,5 @@ bool CPCAPP::loadRom(const char* filepath) {
 }
 
 bool CPCAPP::loadRom(const Uint8* data, size_t size) {
-    LOG_APP(SDL_LOG_PRIORITY_INFO, "Memory injection request incoming: Passing down stream payload.");
     return emu.loadRom(data, size);
 }

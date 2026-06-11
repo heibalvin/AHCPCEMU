@@ -15,7 +15,7 @@ public:
     void reset() override;
 
     // Load raw disk image/ROM payload straight into component memory bounds
-    bool loadRomData(const Uint8* data, size_t size);
+    bool loadRom(const Uint8* data, size_t size);
 };
 
 #endif // CPCDSK_H

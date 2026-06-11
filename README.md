@@ -4,6 +4,8 @@ A modern, multi-platform Amstrad CPC hardware emulator backend core and GUI shel
 
 This repository features a decoupled architecture split into a shared core system library (`CPCEMUCORE`), an interactive graphical application (`AHCPCPEMUAPP`), and an automated headless verification test execution runner (`AHCPCPEMU`).
 
+Latest: working CPCLOG, CPCAPP(SDL), CPCEMU(Core), CPCDSK with Sorcery romfile.
+
 ---
 
        ┌────────────────────────────────────────────────────────┐
