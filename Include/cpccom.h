@@ -1,20 +1,21 @@
 #ifndef CPCCOM_H
 #define CPCCOM_H
 
+// Forward declaration of the parent motherboard class
 class CPCEMU;
 
 class CPCCOM {
 protected:
-    CPCEMU& emu;
+    CPCEMU& emu; // Shared reference to the central communication mediator
 
 public:
-    explicit CPCCOM(CPCEMU& parentEmu) : emu(parentEmu) {}
+    // Every component MUST be constructed with a reference to the motherboard
+    explicit CPCCOM(CPCEMU& centralEmu) : emu(centralEmu) {}
     virtual ~CPCCOM() = default;
 
-    // Strict System Paradigm Hooks
-    virtual bool powerOn()  = 0;
+    virtual bool powerOn() = 0;
     virtual void powerOff() = 0;
-    virtual void reset()    = 0;
+    virtual void reset() = 0;
 };
 
 #endif // CPCCOM_H

@@ -8,7 +8,6 @@ class CPCAPP {
 private:
     SDL_Window* window;
     SDL_Renderer* renderer;
-    bool isRunning;
     bool isHeadless; // The engine configuration toggle
     
     Uint64 lastTicks;
@@ -28,7 +27,9 @@ public:
 
     // Standardized file-handling wrapper
     bool loadRom(const char* filepath);
-    bool loadRom(const Uint8* data, size_t size);
+
+    // CRITICAL FIX: Expose the emulator core to main.cpp
+    CPCEMU& getEmu() { return emu; }
 };
 
 #endif // CPCAPP_H

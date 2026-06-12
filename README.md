@@ -138,7 +138,7 @@ make run-headless
 If you modify target rules inside `CMakeLists.txt`, change structural system variables, or run into compiler sync glitches on macOS, completely flush your environment before building fresh:
 
 ```bash
-make superclean
+make clean
 make run
 
 ```

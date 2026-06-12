@@ -1,16 +1,23 @@
 #ifndef CPCEMU_H
 #define CPCEMU_H
 
-#include <SDL3/SDL.h>
+#include "cpcbus.h"
 #include "cpcdsk.h"
+#include "cpccpu.h"
 
 class CPCEMU {
+    friend class CPCCPU;
+    friend class CPCAPP;
+    
 private:
-    Uint64 totalSystemCycles;
+    size_t totalSystemCycles;
+    bool isRunning; // Renamed for clean boolean nomenclature
+    
+    CPCBUS bus;
+    CPCDSK dsk;
+    CPCCPU cpu;
 
 public:
-    CPCDSK dsk;
-
     CPCEMU();
     ~CPCEMU();
 
@@ -18,8 +25,6 @@ public:
     void powerOff();
     void reset();
     void step(double deltaTime);
-
-    // Standardized asset injection signature
     bool loadRom(const Uint8* data, size_t size);
 };
 

@@ -9,8 +9,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(SDL3 REQUIRED)
 
 # 1. SHARED CORE ENGINE STATIC LIBRARY
-set(CORE_SOURCES Source/cpcemu.cpp Source/cpclog.cpp Source/cpcdsk.cpp)
-set(CORE_HEADERS Include/cpcemu.h Include/cpclog.h Include/cpccom.h Include/cpcdsk.h)
+set(CORE_SOURCES Source/cpcemu.cpp Source/cpclog.cpp Source/cpcdsk.cpp Source/cpcbus.cpp Source/cpccpu.cpp)
+set(CORE_HEADERS Include/cpcemu.h Include/cpclog.h Include/cpccom.h Include/cpcdsk.h Include/cpcbus.h Include/cpccpu.h)
 
 add_library(CPCEMUCORE STATIC ${CORE_SOURCES} ${CORE_HEADERS})
 target_include_directories(CPCEMUCORE PUBLIC Include)

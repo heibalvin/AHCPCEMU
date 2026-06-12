@@ -2,7 +2,7 @@
 #include "cpclog.h"
 
 CPCAPP::CPCAPP(bool isHeadless) 
-    : window(nullptr), renderer(nullptr), isRunning(false), isHeadless(isHeadless), lastTicks(0), emu() {}
+    : window(nullptr), renderer(nullptr), isHeadless(isHeadless), lastTicks(0), emu() {}
 
 CPCAPP::~CPCAPP() {
     powerOff();
@@ -35,13 +35,11 @@ bool CPCAPP::powerOn() {
     // Power on the core emulator motherboard layer in both modes
     if (!emu.powerOn()) return false;
 
-    isRunning = true;
     return true;
 }
 
 void CPCAPP::powerOff() {
-    if (!isRunning) return;
-    isRunning = false;
+    if (!emu.isRunning) return;
     
     emu.powerOff();
 
@@ -75,22 +73,20 @@ void CPCAPP::step() {
 }
 
 void CPCAPP::run() {
-    LOG_APP(SDL_LOG_PRIORITY_INFO, "Entering emulation loop execution state.");
-
     if (isHeadless) {
         // Run a quick deterministic execution cycle check, then exit automatically
         for (int i = 0; i < 5; ++i) {
             step();
         }
-        isRunning = false;
+        emu.isRunning = false;
         return;
     }
 
     SDL_Event event;
-    while (isRunning) {
+    while (emu.isRunning) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
-                isRunning = false;
+                emu.isRunning = false;
             }
         }
 
@@ -116,8 +112,4 @@ bool CPCAPP::loadRom(const char* filepath) {
     bool status = emu.loadRom(reinterpret_cast<const Uint8*>(rawBuffer), fileSize);
     SDL_free(rawBuffer);
     return status;
-}
-
-bool CPCAPP::loadRom(const Uint8* data, size_t size) {
-    return emu.loadRom(data, size);
 }
