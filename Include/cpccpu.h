@@ -11,6 +11,7 @@ class CPCCPU : public CPCCOM {
 private:
     // Core Z80 Registers
     Uint16 PC;
+    Uint16 nextPC; // Temporary storage for the next program counter value
     Uint16 SP;
     Uint8 A, F;
     Uint16 BC, DE, HL;
@@ -23,10 +24,11 @@ private:
     // Storage, Manipulation & Index Utility Helpers
     void push16(Uint16 value);
     Uint16 pop16();
+
     Uint8 getReg8(int regIndex);
-    void  setReg8(int regIndex, Uint8 value);
+    void setReg8(int regIndex, Uint8 value);
     Uint16 getReg16(int pairIndex);
-    void   setReg16(int pairIndex, Uint16 value);
+    void setReg16(int pairIndex, Uint16 value);
 
     // Unified Opcode Arithmetic & Bitwise Logic Calculators
     void opcodeAdd(Uint8 value, bool useCarry);
@@ -48,12 +50,15 @@ private:
     void opcodeRet(bool condition);
 
     // Advanced 0xCB Bit-Manipulator & 0xED Block Engine Layouts
-    int   executeCB();
+    int executeCB();
+    int executeED(); // Added for the new extended opcode handler
+    
     Uint8 opcodeExecuteShiftRotate(int shiftType, Uint8 value);
-    void  opcodeLdBlock(bool increment, bool repeat);
-    void  opcodeCpBlock(bool increment, bool repeat);
+    void opcodeLdBlock(bool increment, bool repeat);
+    void opcodeCpBlock(bool increment, bool repeat);
 
     // Master execution matrix routing block
+    void decode(Uint8 opcode, Uint16 pc); // Logging and decoding helper
     int execute(Uint8 opcode);
 
 public:

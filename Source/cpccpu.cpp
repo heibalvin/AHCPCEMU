@@ -30,19 +30,38 @@ void CPCCPU::reset() {
 }
 
 int CPCCPU::step() {
-    // Fetch opcode byte via 8-bit bus read configuration
+    // 1. Fetch
     Uint8 opcode = emu.bus.read(PC);
-    printf("DEBUG: Fetching 0x%02X from 0x%04X\n", opcode, PC);
-
-    // LOG_CPU(SDL_LOG_PRIORITY_INFO, "CPU Fetch -> PC: [0x%04X] Opcode: 0x%02X", PC, opcode);
+    nextPC = PC + 1; // Default: increment by 1 for the opcode
     
-    // Advance PC past the fetched instruction block byte
-    PC++;
+    // 2. Decode & Log
+    decode(opcode, PC); 
     
-    // Process and route operation, capturing execution hardware cycles spent
-    int cyclesConsumed = execute(opcode);
+    // 3. Execute
+    int cycles = execute(opcode);
+    
+    // 4. Commit PC
+    PC = nextPC;
+    
+    return cycles;
+}
 
-    return cyclesConsumed;
+void CPCCPU::decode(Uint8 opcode, Uint16 pc) {
+    char state[128];
+    snprintf(state, sizeof(state), "AF:0x%04X BC:0x%04X DE:0x%04X HL:0x%04X SP:0x%04X", 
+             (A << 8) | F, BC, DE, HL, SP);
+
+    Uint8 b1 = opcode;
+    Uint8 b2 = emu.bus.read(pc + 1);
+    char bytes[32];
+    snprintf(bytes, sizeof(bytes), "PC:0x%04X %02X %02X", pc, b1, b2);
+
+    const char* mnemonic = "UNKNOWN";
+    if (opcode == 0xCD) mnemonic = "CALL nn";
+    else if (opcode == 0x2A) mnemonic = "LD HL, (nn)";
+    else if (opcode == 0xC3) mnemonic = "JP nn";
+    
+    LOG_CPU(SDL_LOG_PRIORITY_INFO, "%s | %s | %s", state, bytes, mnemonic);
 }
 
 // ======================================================================
@@ -288,9 +307,9 @@ void CPCCPU::opcodeCp(Uint8 value) {
 // CONTROL FLOW BRANCH CALCULATORS
 // ======================================================================
 void CPCCPU::opcodeJp(bool condition) {
-    Uint16 destination = emu.bus.readWord(PC);
-    PC += 2;
-    if (condition) PC = destination;
+    Uint16 destination = emu.bus.readWord(PC + 1);
+    nextPC = destination; // Update nextPC to the target address
+    if (condition) nextPC = destination;
 }
 
 void CPCCPU::opcodeJr(bool condition) {
@@ -316,14 +335,20 @@ void CPCCPU::opcodeRet(bool condition) {
 // ADVANCED 0xCB PRE-INDEXED BIT MANIPULATION DECODER STRATEGIES
 // ======================================================================
 int CPCCPU::executeCB() {
-    Uint8 subOpcode = emu.bus.read(PC++);
+    // 1. Fetch the sub-opcode (PC+1, since PC is at the CB prefix)
+    Uint8 subOpcode = emu.bus.read(PC + 1);
     
+    // 2. Set nextPC to account for 2-byte instruction length
+    nextPC = PC + 2; 
+
     int group    = (subOpcode >> 6) & 0x03; 
     int bitIndex = (subOpcode >> 3) & 0x07; 
     int regIndex = subOpcode & 0x07;        
 
-    Uint8 value = (regIndex == 6) ? emu.bus.read(HL) : getReg8(regIndex);
-    int cyclesSpent = (regIndex == 6) ? 15 : 8;
+    // Determine target value: Register or (HL)
+    bool isMemory = (regIndex == 6);
+    Uint8 value = isMemory ? emu.bus.read(HL) : getReg8(regIndex);
+    int cyclesSpent = isMemory ? 15 : 8;
 
     switch (group) {
         case 0x00: // SHIFT & ROTATE OPERATIONS
@@ -339,7 +364,7 @@ int CPCCPU::executeCB() {
                 if (bitIndex == 7 && bitValue) F |= 0x80; // S
                 if (value & 0x20) F |= 0x20;              // Y
                 if (value & 0x08) F |= 0x08;              // X
-                return (regIndex == 6) ? 12 : 8; 
+                return isMemory ? 12 : 8; 
             }
 
         case 0x02: // BIT CLEAR (RES b, r)
@@ -351,13 +376,66 @@ int CPCCPU::executeCB() {
             break;
     }
 
-    if (regIndex == 6) {
+    // Write result back
+    if (isMemory) {
         emu.bus.write(HL, value);
     } else {
         setReg8(regIndex, value);
     }
 
     return cyclesSpent;
+}
+
+int CPCCPU::executeED() {
+    // 1. Fetch sub-opcode (PC is currently at the ED, so PC+1 is the sub-opcode)
+    Uint8 subOpcode = emu.bus.read(PC + 1);
+    
+    // 2. Set nextPC to account for 2-byte instruction length
+    nextPC = PC + 2; 
+
+    switch (subOpcode) {
+        // --- 16-Bit Arithmetic with Carry ---
+        case 0x4A: opcodeAdc16(BC); return 15;
+        case 0x5A: opcodeAdc16(DE); return 15;
+        case 0x6A: opcodeAdc16(HL); return 15;
+        case 0x7A: opcodeAdc16(SP); return 15;
+
+        case 0x42: opcodeSbc16(BC); return 15;
+        case 0x52: opcodeSbc16(DE); return 15;
+        case 0x62: opcodeSbc16(HL); return 15;
+        case 0x72: opcodeSbc16(SP); return 15;
+
+        // --- Block Transfer Operations ---
+        case 0xA0: opcodeLdBlock(true, false);  return 16; // LDI
+        case 0xB0: { bool l = (BC > 1); opcodeLdBlock(true, true); return l ? 21 : 16; } // LDIR
+        case 0xA8: opcodeLdBlock(false, false); return 16; // LDD
+        case 0xB8: { bool l = (BC > 1); opcodeLdBlock(false, true); return l ? 21 : 16; } // LDDR
+
+        // --- Block Search Operations ---
+        case 0xA1: opcodeCpBlock(true, false);  return 16; // CPI
+        case 0xB1: { bool m = (A == emu.bus.read(HL)); bool l = (BC > 1 && !m); opcodeCpBlock(true, true); return l ? 21 : 16; } // CPIR
+        case 0xA9: opcodeCpBlock(false, false); return 16; // CPD
+        case 0xB9: { bool m = (A == emu.bus.read(HL)); bool l = (BC > 1 && !m); opcodeCpBlock(false, true); return l ? 21 : 16; } // CPDR
+
+        // --- Interrupt Configuration ---
+        case 0x45: IFF1 = IFF2; PC = pop16(); return 14; // RETN
+        case 0x4D: PC = pop16();               return 14; // RETI
+        case 0x46: IM = 0;                     return 8;  
+        case 0x56: IM = 1;                     return 8;  
+        case 0x5E: IM = 2;                     return 8;  
+
+        // --- I/O Operations ---
+        case 0x79: // OUT (C), A - Simplified
+        {
+            emu.bus.write(BC, A);
+            return 12;
+        }
+
+        default:
+            LOG_CPU(SDL_LOG_PRIORITY_CRITICAL, "UNIMPLEMENTED ED PREFIX: 0x%02X at PC: 0x%04X", subOpcode, PC);
+            emu.isRunning = false;
+            return 0;
+    }
 }
 
 Uint8 CPCCPU::opcodeExecuteShiftRotate(int shiftType, Uint8 value) {
@@ -460,206 +538,82 @@ void CPCCPU::opcodeCpBlock(bool increment, bool repeat) {
 // CENTRAL SWITCH DECODER MATRIX
 // ======================================================================
 int CPCCPU::execute(Uint8 opcode) {
-    printf("DEBUG: Executing 0x%02X\n", opcode);
-    LOG_CPU(SDL_LOG_PRIORITY_INFO, "Executing Opcode: 0x%02X at PC: 0x%04X", opcode, PC - 1);
-    
-    // 1. Z80 8-Bit Register-to-Register Direct Block optimization pattern mapping (0x40 - 0x7F)
+    // 1. Z80 8-Bit Register-to-Register Direct Block optimization
     if (opcode >= 0x40 && opcode <= 0x7F && opcode != 0x76) {
         int dstIndex = (opcode >> 3) & 0x07;
         int srcIndex = opcode & 0x07;
-
-        if (dstIndex == 6) { 
-            emu.bus.write(HL, getReg8(srcIndex)); return 7;
-        } else if (srcIndex == 6) { 
-            setReg8(dstIndex, emu.bus.read(HL)); return 7;
-        } else { 
-            setReg8(dstIndex, getReg8(srcIndex)); return 4;
-        }
+        if (dstIndex == 6) { emu.bus.write(HL, getReg8(srcIndex)); return 7; }
+        else if (srcIndex == 6) { setReg8(dstIndex, emu.bus.read(HL)); return 7; }
+        else { setReg8(dstIndex, getReg8(srcIndex)); return 4; }
     }
 
     switch (opcode) {
         case 0x00: return 4; // NOP
 
-        // ======================================================================
-        // 16-BIT HARDWARE MATH DIRECT INSTRUCTIONS
-        // ======================================================================
-        case 0x09: opcodeAdd16(BC); return 11; // ADD HL, BC
-        case 0x19: opcodeAdd16(DE); return 11; // ADD HL, DE
-        case 0x29: opcodeAdd16(HL); return 11; // ADD HL, HL
-        case 0x39: opcodeAdd16(SP); return 11; // ADD HL, SP
+        // --- 16-BIT HARDWARE MATH ---
+        case 0x09: opcodeAdd16(BC); return 11;
+        case 0x19: opcodeAdd16(DE); return 11;
+        case 0x29: opcodeAdd16(HL); return 11;
+        case 0x39: opcodeAdd16(SP); return 11;
 
-        case 0x03: BC++; return 6; // INC BC
-        case 0x13: DE++; return 6; // INC DE
-        case 0x23: HL++; return 6; // INC HL
-        case 0x33: SP++; return 6; // INC SP
+        case 0x03: BC++; return 6;
+        case 0x13: DE++; return 6;
+        case 0x23: HL++; return 6;
+        case 0x33: SP++; return 6;
 
-        case 0x0B: BC--; return 6; // DEC BC
-        case 0x1B: DE--; return 6; // DEC DE
-        case 0x2B: HL--; return 6; // DEC HL
-        case 0x3B: SP--; return 6; // DEC SP
+        case 0x0B: BC--; return 6;
+        case 0x1B: DE--; return 6;
+        case 0x2B: HL--; return 6;
+        case 0x3B: SP--; return 6;
 
-        // ======================================================================
-        // LOAD OPERATIONS GROUP
-        // ======================================================================
-        case 0x06: setReg8(0, emu.bus.read(PC++)); return 7;  // LD B, n
-        case 0x0E: setReg8(1, emu.bus.read(PC++)); return 7;  // LD C, n
-        case 0x16: setReg8(2, emu.bus.read(PC++)); return 7;  // LD D, n
-        case 0x1E: setReg8(3, emu.bus.read(PC++)); return 7;  // LD E, n
-        case 0x26: setReg8(4, emu.bus.read(PC++)); return 7;  // LD H, n
-        case 0x2E: setReg8(5, emu.bus.read(PC++)); return 7;  // LD L, n
-        case 0x3E: setReg8(7, emu.bus.read(PC++)); return 7;  // LD A, n
-        case 0x36: emu.bus.write(HL, emu.bus.read(PC++)); return 10; // LD (HL), n
+        // --- LOAD OPERATIONS ---
+        case 0x06: setReg8(0, emu.bus.read(PC)); nextPC++; return 7;
+        case 0x0E: setReg8(1, emu.bus.read(PC)); nextPC++; return 7;
+        case 0x16: setReg8(2, emu.bus.read(PC)); nextPC++; return 7;
+        case 0x1E: setReg8(3, emu.bus.read(PC)); nextPC++; return 7;
+        case 0x26: setReg8(4, emu.bus.read(PC)); nextPC++; return 7;
+        case 0x2E: setReg8(5, emu.bus.read(PC)); nextPC++; return 7;
+        case 0x3E: setReg8(7, emu.bus.read(PC)); nextPC++; return 7;
+        case 0x36: emu.bus.write(HL, emu.bus.read(PC)); nextPC++; return 10;
 
-        case 0x02: emu.bus.write(BC, A); return 7;           // LD (BC), A
-        case 0x12: emu.bus.write(DE, A); return 7;           // LD (DE), A
-        case 0x0A: A = emu.bus.read(BC); return 7;           // LD A, (BC)
-        case 0x1A: A = emu.bus.read(DE); return 7;           // LD A, (DE)
+        case 0x02: emu.bus.write(BC, A); return 7;
+        case 0x12: emu.bus.write(DE, A); return 7;
+        case 0x0A: A = emu.bus.read(BC); return 7;
+        case 0x1A: A = emu.bus.read(DE); return 7;
 
-        case 0x01: BC = emu.bus.readWord(PC); PC += 2; return 10; // LD BC, nn
-        case 0x11: DE = emu.bus.readWord(PC); PC += 2; return 10; // LD DE, nn
-        case 0x21: HL = emu.bus.readWord(PC); PC += 2; return 10; // LD HL, nn
-        case 0x31: SP = emu.bus.readWord(PC); PC += 2; return 10; // LD SP, nn
+        case 0x01: BC = emu.bus.readWord(PC); nextPC += 2; return 10;
+        case 0x11: DE = emu.bus.readWord(PC); nextPC += 2; return 10;
+        case 0x21: HL = emu.bus.readWord(PC); nextPC += 2; return 10;
+        case 0x31: SP = emu.bus.readWord(PC); nextPC += 2; return 10;
 
-        case 0x2A: { Uint16 addr = emu.bus.readWord(PC+1); HL = emu.bus.readWord(addr); PC += 3; return 16; }
-        case 0x22: { Uint16 addr = emu.bus.readWord(PC+1); emu.bus.writeWord(addr, HL); PC += 3; return 16; }
-        case 0x3A: { Uint16 addr = emu.bus.readWord(PC+1); A = emu.bus.read(addr); PC += 3; return 13; }
-        case 0x32: { Uint16 addr = emu.bus.readWord(PC+1); emu.bus.write(addr, A); PC += 3; return 13; }
+        case 0x2A: { nextPC += 2; HL = emu.bus.readWord(emu.bus.readWord(PC)); return 16; }
+        case 0x22: { nextPC += 2; emu.bus.writeWord(emu.bus.readWord(PC), HL); return 16; }
+        case 0x3A: { nextPC += 2; A = emu.bus.read(emu.bus.readWord(PC)); return 13; }
+        case 0x32: { nextPC += 2; emu.bus.write(emu.bus.readWord(PC), A); return 13; }
 
-        // ======================================================================
-        // STACK OPERATIONS GROUP
-        // ======================================================================
-        case 0xC5: push16(BC); return 11; 
-        case 0xD5: push16(DE); return 11; 
-        case 0xE5: push16(HL); return 11; 
-        case 0xF5: push16((static_cast<Uint16>(A) << 8) | F); return 11; // PUSH AF
+        // --- BRANCH CONTROL FLOW ---
+        case 0xC3: nextPC = emu.bus.readWord(PC); return 10;
+        case 0xCA: if (F & 0x40) nextPC = emu.bus.readWord(PC); else nextPC += 2; return 10;
+        case 0xC2: if (!(F & 0x40)) nextPC = emu.bus.readWord(PC); else nextPC += 2; return 10;
 
-        case 0xC1: BC = pop16(); return 10; 
-        case 0xD1: DE = pop16(); return 10; 
-        case 0xE1: HL = pop16(); return 10; 
-        case 0xF1: { Uint16 af = pop16(); A = af >> 8; F = af & 0xFF; return 10; } // POP AF
+        case 0x18: nextPC += (int8_t)emu.bus.read(PC); return 12;
+        case 0x28: if (F & 0x40) nextPC += (int8_t)emu.bus.read(PC); else nextPC++; return 12;
+        case 0x20: if (!(F & 0x40)) nextPC += (int8_t)emu.bus.read(PC); else nextPC++; return 12;
 
-        // ======================================================================
-        // ARITHMETIC OPERATIONS GROUP
-        // ======================================================================
-        case 0xC6: opcodeAdd(emu.bus.read(PC++), false); return 7; // ADD A, n
-        case 0xCE: opcodeAdd(emu.bus.read(PC++), true);  return 7; // ADC A, n
-        case 0xD6: opcodeSub(emu.bus.read(PC++), false); return 7; // SUB n
-        case 0xDE: opcodeSub(emu.bus.read(PC++), true);  return 7; // SBC A, n
-
-        case 0x80: opcodeAdd(BC >> 8, false);  return 4; // ADD A, B
-        case 0x81: opcodeAdd(BC & 0xFF, false); return 4; // ADD A, C
-        case 0x90: opcodeSub(BC >> 8, false);  return 4; // SUB B
-        case 0x91: opcodeSub(BC & 0xFF, false); return 4; // SUB C
-
-        // ======================================================================
-        // BITWISE LOGICAL OPERATIONS GROUP
-        // ======================================================================
-        case 0xE6: opcodeAnd(emu.bus.read(PC++)); return 7; // AND n
-        case 0xEE: opcodeXor(emu.bus.read(PC++)); return 7; // XOR n
-        case 0xF6: opcodeOr(emu.bus.read(PC++));  return 7; // OR n
-        case 0xFE: opcodeCp(emu.bus.read(PC++));  return 7; // CP n
-
-        case 0xA0: opcodeAnd(BC >> 8);  return 4; 
-        case 0xA1: opcodeAnd(BC & 0xFF); return 4; 
-        case 0xA7: opcodeAnd(A);          return 4; 
-        case 0xAF: opcodeXor(A);          return 4; // XOR A (Clear to 0 optimization)
-        case 0xB0: opcodeOr(BC >> 8);   return 4; 
-        case 0xB1: opcodeOr(BC & 0xFF);  return 4; 
-        case 0xB8: opcodeCp(BC >> 8);   return 4; 
-        case 0xB9: opcodeCp(BC & 0xFF);  return 4; 
-
-        // ======================================================================
-        // BRANCH CONTROL FLOW GROUP
-        // ======================================================================
-        case 0xC3: opcodeJp(true);            return 10; 
-        case 0xCA: opcodeJp((F & 0x40) != 0); return 10; // JP Z
-        case 0xC2: opcodeJp((F & 0x40) == 0); return 10; // JP NZ
-
-        case 0x18: opcodeJr(true);            return 12; 
-        case 0x28: { bool t = (F & 0x40) != 0; opcodeJr(t); return t ? 12 : 7; } // JR Z
-        case 0x20: { bool t = (F & 0x40) == 0; opcodeJr(t); return t ? 12 : 7; } // JR NZ
-
-        case 0xCD: { // CALL nn
-            Uint16 returnAddr = PC + 2; 
-            Uint16 destination = emu.bus.readWord(PC);
-            
-            LOG_CPU(SDL_LOG_PRIORITY_INFO, "CALLing subroutine at: 0x%04X", destination);
-            
-            push16(returnAddr);
-            PC = destination;
+        case 0xCD: {
+            push16(PC + 2);
+            nextPC = emu.bus.readWord(PC);
             return 17;
         }
-        case 0xCC: { bool t = (F & 0x40) != 0; opcodeCall(t); return t ? 17 : 10; } // CALL Z
-        case 0xC4: { bool t = (F & 0x40) == 0; opcodeCall(t); return t ? 17 : 10; } // CALL NZ
 
         // ======================================================================
         // EXTENSION PREFIX MATRIX DIRECT ENTRY ROUTINGS
         // ======================================================================
         case 0xCB: return executeCB();
+        case 0xED: return executeED();
 
         case 0xF3: IFF1 = false; IFF2 = false; return 4; // DI
         case 0xFB: IFF1 = true;  IFF2 = true;  return 4; // EI
-
-        case 0xED:
-            {
-                Uint8 subOpcode = emu.bus.read(PC++);
-                switch (subOpcode) {
-                    // --- Integrated Amstrad Gate Array I/O Banking Routing Intercept ---
-                    case 0x79: // OUT (C), A
-                        {
-                            Uint16 portHigh = (BC >> 8) & 0xFF;
-                            
-                            // Gate Array Selection Decode Interlock (Bit 14 Low, Bit 15 Low)
-                            if ((portHigh & 0xC0) == 0x40) {
-                                /* TBD: Banking logic removed for flat memory model testing
-                                emu.bus.setRomBankingConfig(A);
-                                */
-                            }
-                            // Upper Selection Expansion Slot Decode (0xDF00)
-                            else if (portHigh == 0xDF) {
-                                /* TBD: Banking logic removed for flat memory model testing
-                                emu.bus.selectUpperRomBank(A);
-                                */
-                            }
-                            return 12;
-                        }
-
-                    // 16-Bit Arithmetic with Carry Table
-                    case 0x4A: opcodeAdc16(BC); return 15; // ADC HL, BC
-                    case 0x5A: opcodeAdc16(DE); return 15; // ADC HL, DE
-                    case 0x6A: opcodeAdc16(HL); return 15; // ADC HL, HL
-                    case 0x7A: opcodeAdc16(SP); return 15; // ADC HL, SP
-
-                    case 0x42: opcodeSbc16(BC); return 15; // SBC HL, BC
-                    case 0x52: opcodeSbc16(DE); return 15; // SBC HL, DE
-                    case 0x62: opcodeSbc16(HL); return 15; // SBC HL, HL
-                    case 0x72: opcodeSbc16(SP); return 15; // SBC HL, SP
-
-                    // Block Transfer Operations
-                    case 0xA0: opcodeLdBlock(true, false); return 14; // LDI
-                    case 0xB0: { bool l = (BC > 1); opcodeLdBlock(true, true); return l ? 21 : 14; } // LDIR
-                    case 0xA8: opcodeLdBlock(false, false); return 14; // LDD
-                    case 0xB8: { bool l = (BC > 1); opcodeLdBlock(false, true); return l ? 21 : 14; } // LDDR
-
-                    // Block Search Operations
-                    case 0xA1: opcodeCpBlock(true, false); return 14; // CPI
-                    case 0xB1: { bool m = (A == emu.bus.read(HL)); bool l = (BC > 1 && !m); opcodeCpBlock(true, true); return l ? 21 : 14; } // CPIR
-                    case 0xA9: opcodeCpBlock(false, false); return 14; // CPD
-                    case 0xB9: { bool m = (A == emu.bus.read(HL)); bool l = (BC > 1 && !m); opcodeCpBlock(false, true); return l ? 21 : 14; } // CPDR
-
-                    // Interrupt Configuration Hooks
-                    case 0x45: IFF1 = IFF2; PC = pop16(); return 14; // RETN
-                    case 0x4D: PC = pop16();               return 14; // RETI
-                    case 0x46: IM = 0;                     return 8;  
-                    case 0x56: IM = 1;                     return 8;  
-                    case 0x5E: IM = 2;                     return 8;  
-
-                    default:
-                        LOG_CPU(SDL_LOG_PRIORITY_CRITICAL, "UNIMPLEMENTED ED PREFIX EXTENSION: 0x%02X at PC: 0x%04X", subOpcode, (Uint16)(PC - 2));
-                        emu.isRunning = false; // Direct state manipulation
-                        return 0;
-                }
-            }
 
         default:
             LOG_CPU(SDL_LOG_PRIORITY_CRITICAL, "UNIMPLEMENTED OPCODE TRAP: 0x%02X at PC: 0x%04X", opcode, (Uint16)(PC - 1));
