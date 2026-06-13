@@ -4,31 +4,29 @@
 #include <SDL3/SDL.h>
 #include "cpccom.h"
 
-class CPCBUS : public CPCCOM {
-	friend class CPCCPU;
-
+class CPCBUS: CPCCOM {
 private:
-    Uint8 ram[128 * 1024];
-    Uint8 lowerRom[16 * 1024];
-    Uint8 upperRom[16 * 1024];
-    bool lowerRomEnabled;
-    bool upperRomEnabled;
+    Uint8* memory;
+    static const size_t MEMORY_SIZE = 65536;
 
 public:
-    // Pass the emu reference forward to CPCCOM
     explicit CPCBUS(CPCEMU& centralEmu);
-    ~CPCBUS() override = default;
+    ~CPCBUS();
 
-    bool powerOn() override;
-    void powerOff() override;
-    void reset() override;
-    
-    void injectLowerRom(const Uint8* data, size_t size);
-    void injectUpperRom(const Uint8* data, size_t size);
-    void setRomStates(bool lowerEnabled, bool upperEnabled);
-    
-    Uint8 readByte(Uint16 address);
-    void writeByte(Uint16 address, Uint8 value);
+    bool powerOn();
+    void powerOff();
+    void reset();
+
+    // Standard Accessors
+    Uint8 read(Uint16 address);
+    void  write(Uint16 address, Uint8 value);
+
+    // 16-bit helpers for Z80 registers
+    Uint16 readWord(Uint16 address);
+    void   writeWord(Uint16 address, Uint16 value);
+
+    // Direct access for bootstrap loading
+    Uint8* getRawMemoryPointer() { return memory; }
 };
 
 #endif // CPCBUS_H

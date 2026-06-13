@@ -1,37 +1,37 @@
-#include "cpclog.h"
 #include "cpcapp.h"
-#include "cpcemu.h"
+#include <SDL3/SDL.h>
 
 int main(int argc, char* argv[]) {
-    // 1. INITIALIZE High-Level Host Logging Architecture
-    CPCLOG::initialize();
-
-    bool launchHeadless = false;
-    for (int i = 1; i < argc; ++i) {
+    // 1. Parse command line parameters for headless execution state configurations
+    bool startHeadless = false;
+    for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--headless") == 0) {
-            launchHeadless = true;
+            startHeadless = true;
+            break;
         }
     }
 
-    // Instantiate your application framework container layer
-    CPCAPP app(launchHeadless);
+    // 2. Instantiate your frontend application layer on stack passing configuration
+    CPCAPP app(startHeadless);
 
-    // 2. POWER ON Subsystems (Fires SDL_Init for OS resource tracking)
+    // 3. Fire up host windows or baseline subsystems
     if (!app.powerOn()) {
-        LOG_APP(SDL_LOG_PRIORITY_CRITICAL, "Application environment aborted execution during powerOn.");
+        return -1; // Graceful failure escape route if initialization breaks
+    }
+
+    SDL_SetLogPriorities(SDL_LOG_PRIORITY_DEBUG);
+
+    // Optional workspace loads can safely happen here:
+    // app.loadDisk("Resources/Sorcery (UK) (1985).dsk");
+    if (!app.loadRom("Resources/ZEXALL.COM", true)) {
+        printf("FATAL: Could not load ZEXALL.COM\n");
         return -1;
     }
 
-    // 3. LOAD REAL GAME ASSET (Routes downward to CPCDSK file-system layout blocks)
-    // Make sure the space formatting matches your local file configuration perfectly
-    app.loadRom("Resources/Sorcery (UK) (1985).dsk");
+    // 4. Run the master simulation execution loop
+    app.run();
 
-    // 4. EXECUTE EXACTLY ONE CLOCK STEP SWEEP
-    // The CPU looks at physical reset vector location 0x0000, reads the bus state, 
-    // and shifts the Program Counter forward.
-    app.getEmu().step(1.0);
-
-    // 5. POWER OFF Subsystems Cleanly
+    // 5. Tear down host resources cleanly
     app.powerOff();
 
     return 0;

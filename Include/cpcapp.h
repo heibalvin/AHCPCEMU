@@ -8,13 +8,11 @@ class CPCAPP {
 private:
     SDL_Window* window;
     SDL_Renderer* renderer;
-    bool isHeadless; // The engine configuration toggle
-    
-    Uint64 lastTicks;
-    CPCEMU emu;
+    bool          isHeadless; // Keeps the local frontend environment flag context
+    Uint64        lastTicks;
+    CPCEMU        emu;
 
 public:
-    // Defaults to false (Standard Interactive UI Mode)
     explicit CPCAPP(bool isHeadless = false);
     ~CPCAPP();
 
@@ -25,10 +23,9 @@ public:
     void step();
     void run();
 
-    // Standardized file-handling wrapper
-    bool loadRom(const char* filepath);
+    bool loadRom(const char* filepath, bool bootstrap = false);
+    bool loadDisk(const char* filepath);
 
-    // CRITICAL FIX: Expose the emulator core to main.cpp
     CPCEMU& getEmu() { return emu; }
 };
 

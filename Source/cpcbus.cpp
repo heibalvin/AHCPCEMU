@@ -2,62 +2,53 @@
 #include "cpclog.h"
 
 CPCBUS::CPCBUS(CPCEMU& centralEmu) 
-    : CPCCOM(centralEmu), lowerRomEnabled(true), upperRomEnabled(true) {
-    SDL_memset(ram, 0, sizeof(ram));
-    SDL_memset(lowerRom, 0, sizeof(lowerRom));
-    SDL_memset(upperRom, 0, sizeof(upperRom));
-}
+    : CPCCOM(centralEmu), memory(nullptr) {}
+
+CPCBUS::~CPCBUS() { powerOff(); }
 
 bool CPCBUS::powerOn() {
+    memory = static_cast<Uint8*>(SDL_malloc(MEMORY_SIZE));
+    if (!memory) return false;
     reset();
     return true;
 }
 
 void CPCBUS::powerOff() {
-
+    if (memory) {
+        SDL_free(memory);
+        memory = nullptr;
+    }
 }
 
 void CPCBUS::reset() {
-    lowerRomEnabled = true; // CPC hardware defaults to both ROMs visible on boot
-    upperRomEnabled = true;
+    if (memory) {
+        SDL_memset(memory, 0x00, MEMORY_SIZE);
+    }
 }
 
-void CPCBUS::injectLowerRom(const Uint8* data, size_t size) {
-    if (!data || size == 0) return;
-    size_t copySize = (size > 16384) ? 16384 : size;
-    SDL_memcpy(lowerRom, data, copySize);
-}
-
-void CPCBUS::injectUpperRom(const Uint8* data, size_t size) {
-    if (!data || size == 0) return;
-    size_t copySize = (size > 16384) ? 16384 : size;
-    SDL_memcpy(upperRom, data, copySize);
-}
-
-void CPCBUS::setRomStates(bool lowerEnabled, bool upperEnabled) {
-    lowerRomEnabled = lowerEnabled;
-    upperRomEnabled = upperEnabled;
-}
-
-Uint8 CPCBUS::readByte(Uint16 address) {
-    // 0x0000 - 0x3FFF (Lower ROM / RAM Bank 0)
-    if (address <= 0x3FFF) {
-        return lowerRomEnabled ? lowerRom[address] : ram[address];
+Uint8 CPCBUS::read(Uint16 address) {
+    // CP/M BDOS Intercept (Function 0x0005)
+    // When the Z80 executes a CALL to 0x0005, we intercept here.
+    if (address == 0x0005) {
+        // TODO: Access CPU registers via a back-reference to handle syscalls
+        return 0x00; 
     }
     
-    // 0x4000 - 0xBFFF (RAM Banks 1 & 2)
-    if (address <= 0xBFFF) {
-        return ram[address];
-    }
-    
-    // 0xC000 - 0xFFFF (Upper ROM / RAM Bank 3)
-    if (upperRomEnabled) {
-        return upperRom[address - 0xC000];
-    }
-    return ram[address];
+    return memory[address];
 }
 
-void CPCBUS::writeByte(Uint16 address, Uint8 value) {
-    // ROM lines are read-only; writes always bypass to the background RAM bank
-    ram[address] = value;
+void CPCBUS::write(Uint16 address, Uint8 value) {
+    memory[address] = value;
+}
+
+Uint16 CPCBUS::readWord(Uint16 address) {
+    // Z80 is Little-Endian
+    Uint8 low  = read(address);
+    Uint8 high = read(static_cast<Uint16>(address + 1));
+    return static_cast<Uint16>(low | (high << 8));
+}
+
+void CPCBUS::writeWord(Uint16 address, Uint16 value) {
+    write(address, static_cast<Uint8>(value & 0xFF));
+    write(static_cast<Uint16>(address + 1), static_cast<Uint8>((value >> 8) & 0xFF));
 }
